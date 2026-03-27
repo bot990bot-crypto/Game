@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+
+<!-- MOBILE OPTIMIZATION -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+<title>Unicorn Dash</title>
+
+<!-- TELEGRAM WEB APP -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #2c003e;
+    font-family: Arial, sans-serif;
+    touch-action: none;
+}
+
+canvas {
+    display: block;
+}
+
+#ui {
+    position: absolute;
+    top: 0;
+    width: 100%;
+    padding: 20px;
+    color: white;
+    font-size: 24px;
+}
+
+#startScreen, #gameOverScreen {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+button {
+    padding: 15px 30px;
+    font-size: 20px;
+    border-radius: 30px;
+    border: none;
+}
+</style>
+</head>
+
+<body>
+
+<div id="ui">Score: <span id="score">0</span></div>
+
+<div id="startScreen">
+    <h1 style="color:white;">UNICORN DASH</h1>
+    <button onclick="startGame()">START</button>
+</div>
+
+<div id="gameOverScreen" style="display:none">
+    <h1 style="color:white;">GAME OVER</h1>
+    <button onclick="startGame()">RESTART</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+/* TELEGRAM SAFE INIT */
+let tg = window.Telegram ? window.Telegram.WebApp : null;
+if (tg) tg.expand();
+
+/* CANVAS */
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let width, height;
+
+function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+    ctx.imageSmoothingEnabled = false;
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* GAME STATE */
+let player, gravity = 0.8, gameSpeed, obstacles, score, running;
+
+/* START */
+function startGame() {
+    document.getElementById("startScreen").style.display = "none";
+    document.getElementById("gameOverScreen").style.display = "none";
+
+    player = { x: 100, y: height-150, w: 40, h: 40, vy: 0, grounded: true };
+    obstacles = [];
+    gameSpeed = 6;
+    score = 0;
+    running = true;
+
+    loop();
+}
+
+/* JUMP */
+function jump() {
+    if (player.grounded) {
+        player.vy = -15;
+        player.grounded = false;
+    }
+}
+
+/* INPUT */
+document.addEventListener("touchstart", e => {
+    e.preventDefault();
+    jump();
+}, { passive: false });
+
+document.addEventListener("mousedown", jump);
+
+/* UPDATE */
+function update() {
+    score += 0.1;
+    document.getElementById("score").innerText = Math.floor(score);
+
+    player.vy += gravity;
+    player.y += player.vy;
+
+    if (player.y > height) gameOver();
+
+    if (player.y >= height - 100 - player.h) {
+        player.y = height - 100 - player.h;
+        player.vy = 0;
+        player.grounded = true;
+    }
+
+    // obstacles
+    if (Math.random() < 0.02) {
+        obstacles.push({ x: width, w: 30, h: 50 });
+    }
+
+    obstacles.forEach(o => o.x -= gameSpeed);
+
+    // collision
+    for (let o of obstacles) {
+        if (player.x < o.x + o.w &&
+            player.x + player.w > o.x &&
+            player.y + player.h > height - o.h) {
+            gameOver();
+        }
+    }
+}
+
+/* DRAW */
+function draw() {
+    ctx.fillStyle = "#2c003e";
+    ctx.fillRect(0,0,width,height);
+
+    // ground
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, height-100, width, 100);
+
+    // player
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(player.x, player.y, player.w, player.h);
+
+    // obstacles
+    ctx.fillStyle = "red";
+    obstacles.forEach(o => {
+        ctx.fillRect(o.x, height-o.h, o.w, o.h);
+    });
+}
+
+/* LOOP */
+function loop() {
+    if (!running) return;
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+/* GAME OVER */
+function gameOver() {
+    running = false;
+    document.getElementById("gameOverScreen").style.display = "flex";
+}
+</script>
+
+</body>
+</html>
