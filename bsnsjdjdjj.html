@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Endless Runner with Adsgram</title>
+    
+    <script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            margin-top: 50px;
+            width: 800px;
+            height: 400px;
+            background-color: #87CEEB; /* Sky blue */
+            border: 4px solid #333;
+            border-radius: 10px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* UI Overlays */
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            display: none; /* Hidden by default */
+        }
+
+        h1 {
+            font-size: 48px;
+            margin: 0 0 20px 0;
+        }
+
+        p {
+            font-size: 24px;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 20px;
+            font-weight: bold;
+            color: white;
+            background-color: #28a745;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        #rewardBtn {
+            background-color: #ffc107;
+            color: #333;
+        }
+
+        #rewardBtn:hover {
+            background-color: #e0a800;
+        }
+
+        #scoreBoard {
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gameContainer">
+        <div id="scoreBoard">Score: <span id="scoreText">0</span></div>
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        
+        <div id="startScreen" class="overlay" style="display: flex;">
+            <h1>Endless Runner</h1>
+            <p>Press Space or Tap to Jump</p>
+            <button onclick="startGame()">Play Game</button>
+        </div>
+
+        <div id="gameOverScreen" class="overlay">
+            <h1>Game Over!</h1>
+            <p>Final Score: <span id="finalScoreText">0</span></p>
+            <button onclick="restartGame()">Try Again</button>
+            <button id="rewardBtn" onclick="watchAdToRevive()">Watch Ad to Revive (Continue)</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Initialize Adsgram SDK ---
+        const RewardedAdController = window.Adsgram.init({ blockId: "26133" });
+        const InterstitialAdController = window.Adsgram.init({ blockId: "int-26134" });
+
+        // --- Game Setup ---
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        
+        // UI Elements
+        const startScreen = document.getElementById("startScreen");
+        const gameOverScreen = document.getElementById("gameOverScreen");
+        const scoreText = document.getElementById("scoreText");
+        const finalScoreText = document.getElementById("finalScoreText");
+
+        // Game Variables
+        let frames = 0;
+        let score = 0;
+        let gameLoop;
+        let isPlaying = false;
+        let gameSpeed = 5;
+
+        // Entities
+        const player = {
+            x: 50,
+            y: 300,
+            width: 40,
+            height: 40,
+            dy: 0,
+            gravity: 0.6,
+            jumpPower: -12,
+            grounded: false,
+            
+            draw() {
+                ctx.fillStyle = "#FF5733"; // Orange player box
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            },
+            
+            update() {
+                // Apply gravity
+                this.dy += this.gravity;
+                this.y += this.dy;
+
+                // Ground collision
+                if (this.y + this.height >= 350) {
+                    this.y = 350 - this.height;
+                    this.dy = 0;
+                    this.grounded = true;
+                } else {
+                    this.grounded = false;
+                }
+            },
+            
+            jump() {
+                if (this.grounded) {
+                    this.dy = this.jumpPower;
+                }
+            }
+        };
+
+        const obstacles = [];
+
+        function spawnObstacle() {
+            let size = Math.random() * 20 + 30; // Random height between 30 and 50
+            obstacles.push({
+                x: canvas.width,
+                y: 350 - size,
+                width: 30,
+                height: size,
+                passed: false
+            });
+        }
+
+        // --- Game Controls ---
+        window.addEventListener("keydown", (e) => {
+            if (e.code === "Space" && isPlaying) player.jump();
+        });
+        canvas.addEventListener("mousedown", () => {
+            if (isPlaying) player.jump();
+        });
+        canvas.addEventListener("touchstart", () => {
+            if (isPlaying) player.jump();
+        });
+
+        // --- Game Logic ---
+        function startGame() {
+            startScreen.style.display = "none";
+            gameOverScreen.style.display = "none";
+            
+            // Reset variables
+            player.y = 300;
+            player.dy = 0;
+            obstacles.length = 0;
+            score = 0;
+            frames = 0;
+            gameSpeed = 5;
+            isPlaying = true;
+            
+            loop();
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        function reviveGame() {
+            gameOverScreen.style.display = "none";
+            
+            // Clear immediate obstacles so player doesn't die instantly upon revive
+            obstacles.length = 0; 
+            
+            player.y = 100; // drop from air safely
+            player.dy = 0;
+            isPlaying = true;
+            loop();
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            cancelAnimationFrame(gameLoop);
+            
+            finalScoreText.innerText = score;
+            gameOverScreen.style.display = "flex";
+
+            // Show Interstitial Ad on Game Over
+            InterstitialAdController.show().then(() => {
+                console.log("Interstitial ad viewed successfully");
+            }).catch((err) => {
+                console.log("Interstitial ad skipped or failed", err);
+            });
+        }
+
+        // --- Adsgram Rewarded Logic ---
+        function watchAdToRevive() {
+            RewardedAdController.show().then((result) => {
+                // User successfully watched the rewarded ad
+                console.log("Rewarded Ad completed, reviving player!");
+                reviveGame();
+            }).catch((err) => {
+                // User closed the ad early or it failed to load
+                console.log("Rewarded Ad failed or closed early", err);
+                alert("Ad could not be completed. You cannot be revived.");
+            });
+        }
+
+        // --- Main Game Loop ---
+        function loop() {
+            if (!isPlaying) return;
+
+            // Clear Canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Ground
+            ctx.fillStyle = "#228B22"; // Forest green
+            ctx.fillRect(0, 350, canvas.width, 50);
+
+            // Update & Draw Player
+            player.update();
+            player.draw();
+
+            // Handle Obstacles
+            if (frames % 90 === 0) {
+                spawnObstacle();
+            }
+
+            for (let i = 0; i < obstacles.length; i++) {
+                let obs = obstacles[i];
+                obs.x -= gameSpeed;
+
+                ctx.fillStyle = "#333";
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+
+                // Collision Detection
+                if (
+                    player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y
+                ) {
+                    gameOver();
+                }
+
+                // Score increment
+                if (obs.x + obs.width < player.x && !obs.passed) {
+                    score += 10;
+                    obs.passed = true;
+                    // Slightly increase speed
+                    if(gameSpeed < 12) gameSpeed += 0.2; 
+                }
+            }
+
+            // Remove off-screen obstacles
+            while (obstacles.length > 0 && obstacles[0].x + obstacles[0].width < 0) {
+                obstacles.shift();
+            }
+
+            scoreText.innerText = score;
+            frames++;
+
+            gameLoop = requestAnimationFrame(loop);
+        }
+    </script>
+</body>
+</html>
